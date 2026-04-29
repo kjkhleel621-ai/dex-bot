@@ -29,12 +29,9 @@ loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
 async def send_startup_msg():
-    """إرسال رسالة تأكيد فورية عند بدء التشغيل"""
     try:
-        await bot.send_message(chat_id=CHAT_ID, text="✅ *بوت DexScreener يعمل الآن!*\n\nالمراقبة مفعلة كل 30 ثانية.\nسيتم إرسال التنبيهات هنا فور مطابقة الشروط.", parse_mode='Markdown')
-        print("Startup message sent!")
-    except Exception as e:
-        print(f"Error sending startup msg: {e}")
+        await bot.send_message(chat_id=CHAT_ID, text="🚀 *تم تحديث الفلتر بنجاح!*\n\n*الشرط الجديد:* لن يتم إرسال أي عملة إلا إذا كانت تمتلك صورة (Logo) رسمية.\nجاري المراقبة الآن...", parse_mode='Markdown')
+    except Exception: pass
 
 async def is_liquidity_locked(token_address, chain_id="ethereum"):
     try:
@@ -54,8 +51,7 @@ async def is_liquidity_locked(token_address, chain_id="ethereum"):
             if locked_percent >= 90:
                 return True, f"{locked_percent:.1f}%"
         return False, "0%"
-    except Exception:
-        return True, "Unknown (Bypassed)"
+    except Exception: return True, "Unknown (Bypassed)"
 
 async def get_pair_details(token_address):
     try:
@@ -69,7 +65,7 @@ async def get_pair_details(token_address):
     except Exception: pass
     return None
 
-async def send_alert(pair, locked_info):
+async def send_alert(pair, locked_info, image_url):
     try:
         base_token = pair.get("baseToken", {})
         symbol = base_token.get("symbol", "Unknown")
@@ -92,9 +88,10 @@ async def send_alert(pair, locked_info):
             f"🔒 *السيولة المقفلة:* {locked_info}\n\n"
             f"📑 *العقد:* `{address}`\n"
             f"🔗 *الرابط:* [DexScreener]({pair.get('url')})\n\n"
-            f"✅ *التقييم:* متوافق مع الفلاتر"
+            f"✅ *التقييم:* متوافق مع كافة الشروط + Logo"
         )
-        await bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode='Markdown')
+        
+        await bot.send_photo(chat_id=CHAT_ID, photo=image_url, caption=msg, parse_mode='Markdown')
     except Exception: pass
 
 async def check_pairs_async():
@@ -105,8 +102,14 @@ async def check_pairs_async():
         for profile in profiles[:15]:
             token_address = profile.get("tokenAddress")
             if not token_address or token_address in processed_tokens: continue
+            
             pair = await get_pair_details(token_address)
             if not pair: continue
+            
+            # --- شرط الصورة الإلزامي ---
+            image_url = pair.get("info", {}).get("imageUrl")
+            if not image_url: continue # تخطي العملة إذا لم يكن لها صورة
+            
             mcap = pair.get("fdv", 0) or pair.get("marketCap", 0)
             vol_1h = pair.get("volume", {}).get("h1", 0)
             txns_1h = pair.get("txns", {}).get("h1", {}).get("total", 0)
@@ -117,7 +120,7 @@ async def check_pairs_async():
                 txns_1h >= MIN_TXNS_1H and age_mins <= MAX_AGE_MINUTES):
                 is_locked, locked_info = await is_liquidity_locked(token_address, pair.get("chainId", "ethereum"))
                 if is_locked:
-                    await send_alert(pair, locked_info)
+                    await send_alert(pair, locked_info, image_url)
                     processed_tokens.add(token_address)
     except Exception: pass
 
@@ -126,15 +129,12 @@ def check_pairs_sync():
 
 @app.route("/")
 def home():
-    return "Bot is running!"
+    return "Bot is running with Mandatory Logo Filter!"
 
 if __name__ == "__main__":
-    # إرسال رسالة الترحيب عند البدء
     loop.run_until_complete(send_startup_msg())
-    
     scheduler = BackgroundScheduler()
     scheduler.add_job(func=check_pairs_sync, trigger="interval", seconds=CHECK_INTERVAL)
     scheduler.start()
-    
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
