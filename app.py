@@ -7,17 +7,16 @@ from telegram import Bot
 from flask import Flask
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# ========== إعدادات الصياد السريع (V2) ==========
+# ========== إعدادات الصياد السريع (V2 - Updated Age) ==========
 BOT_TOKEN = "8411603184:AAEurS9EZmL0k34lf1LKUVrZrGFug5UKNps"
 CHAT_ID = "5902278714"
-CHECK_INTERVAL = 15 # فحص كل 15 ثانية
+CHECK_INTERVAL = 15 
 
-# الشروط الأساسية (حسب طلبك)
 MIN_MARKET_CAP = 50000
 MAX_MARKET_CAP = 750000
 MIN_VOLUME = 50000 
-MAX_AGE_MINUTES = 25 # أول 5 شموع
-# ======================================
+MAX_AGE_MINUTES = 35 # تم الرفع إلى 35 دقيقة بناءً على طلبك
+# ===============================================================
 
 app = Flask(__name__)
 bot = Bot(token=BOT_TOKEN)
@@ -27,7 +26,7 @@ asyncio.set_event_loop(loop)
 
 async def send_startup_msg():
     try:
-        await bot.send_message(chat_id=CHAT_ID, text="⚡ *تم تفعيل وضع القناص المطور (V2)!*\n\n✅ جلب العملات من Latest Pairs (بدون انتظار الرسوم).\n✅ دعم سحب الصور مجاناً من Pump.fun.\n✅ فحص السيولة والقيمة السوقية بدقة.\n\nجاري الصيد... 🎯", parse_mode='Markdown')
+        await bot.send_message(chat_id=CHAT_ID, text="⚡ *تم تحديث وضع القناص (V2)!*\n\n✅ شرط العمر الجديد: *35 دقيقة*.\n✅ جاري مراقبة العملات الجديدة... 🎯", parse_mode='Markdown')
     except Exception as e: print(f"Startup error: {e}")
 
 async def send_alert(pair, image_url, age_mins):
@@ -56,26 +55,19 @@ async def send_alert(pair, image_url, age_mins):
 
 async def check_pairs_async():
     try:
-        # التعديل الجوهري: استخدام Latest Pairs بدلاً من Token Profiles
-        # هذا الرابط يجلب أحدث العملات التي تم إنشاؤها على سولانا فوراً
         url = "https://api.dexscreener.com/latest/dex/search?q=solana"
         resp = requests.get(url, timeout=10)
         if resp.status_code != 200: return
         
         data = resp.json()
         pairs = data.get("pairs", [])
-        
-        # ترتيب العملات حسب وقت الإنشاء (الأحدث أولاً)
         pairs.sort(key=lambda x: x.get("pairCreatedAt", 0), reverse=True)
 
-        for pair in pairs[:30]: # فحص أحدث 30 زوجاً
+        for pair in pairs[:30]:
             token_address = pair.get("baseToken", {}).get("address")
             if not token_address or token_address in processed_tokens: continue
-            
-            # 1. فحص الشبكة (Solana فقط)
             if pair.get("chainId") != "solana": continue
 
-            # 2. فحص قفل السيولة
             is_locked = False
             pair_str = str(pair).lower()
             labels = [l.lower() for l in pair.get("labels", [])]
@@ -83,12 +75,11 @@ async def check_pairs_async():
                 is_locked = True
             elif "locked" in pair_str or "burned" in pair_str:
                 is_locked = True
-            elif pair.get("dexId") == "pump": # عملات Pump.fun آمنة من حيث القفل
+            elif pair.get("dexId") == "pump":
                 is_locked = True
             
             if not is_locked: continue
 
-            # 3. الشروط المالية وعمر العملة
             mcap = pair.get("fdv", 0) or pair.get("marketCap", 0)
             vol_h1 = pair.get("volume", {}).get("h1", 0)
             created_at = pair.get("pairCreatedAt", 0)
@@ -98,19 +89,11 @@ async def check_pairs_async():
                 vol_h1 >= MIN_VOLUME and 
                 age_mins <= MAX_AGE_MINUTES):
                 
-                # 4. فحص الصورة (Logo)
                 image_url = pair.get("info", {}).get("imageUrl")
-                
-                # إذا لم تكن الصورة موجودة على DexScreener، نسحبها من Pump.fun مجاناً
                 if not image_url and pair.get("dexId") == "pump":
-                    image_url = f"https://ipfs.io/ipfs/{token_address}" # محاولة سحب الصورة عبر IPFS (نمط Pump.fun)
-                    # ملاحظة: بعض العملات تستخدم روابط مباشرة، هذا الرابط هو مثال تقريبي
-                    # في النسخة المتقدمة يمكن استخدام API خاص بـ Pump.fun
+                    image_url = f"https://ipfs.io/ipfs/{token_address}"
                 
-                # شرط إلزامي: يجب وجود صورة (حسب طلبك)
-                # إذا لم نجد صورة حتى بعد المحاولة، نتجاهل العملة
                 if not image_url:
-                    # محاولة أخيرة: التحقق من وجود أيقونة افتراضية أو معلومات إضافية
                     if not pair.get("info"): continue
 
                 await send_alert(pair, image_url, age_mins)
@@ -123,12 +106,12 @@ def check_pairs_sync():
 
 @app.route("/")
 def home():
-    return "Sniper Bot V2 is running!"
+    return "Sniper Bot V2 is running with 35m age limit!"
 
 if __name__ == "__main__":
     loop.run_until_complete(send_startup_msg())
     scheduler = BackgroundScheduler()
     scheduler.add_job(func=check_pairs_sync, trigger="interval", seconds=CHECK_INTERVAL)
     scheduler.start()
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
