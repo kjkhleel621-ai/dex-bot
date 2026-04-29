@@ -8,8 +8,11 @@ from flask import Flask
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # ========== إعدادات المستخدم ==========
-BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+# ========== إعدادات المستخدم ==========
+BOT_TOKEN = "8411603184:AAEurS9EZmL0k34lf1LKUVrZrGFug5UKNps"
+CHAT_ID = "5902278714"
+CHECK_INTERVAL = 30  # فحص كل 30 ثانية
+
 CHECK_INTERVAL = 30  # فحص كل 30 ثانية
 
 # --- شروط الفلترة المتقدمة ---
