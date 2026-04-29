@@ -7,7 +7,7 @@ from telegram import Bot
 from flask import Flask
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# ========== إعدادات الصياد السريع (V2 - Updated Age) ==========
+# ========== إعدادات الصياد السريع (V3 - Ultimate Sniper) ==========
 BOT_TOKEN = "8411603184:AAEurS9EZmL0k34lf1LKUVrZrGFug5UKNps"
 CHAT_ID = "5902278714"
 CHECK_INTERVAL = 15 
@@ -15,7 +15,7 @@ CHECK_INTERVAL = 15
 MIN_MARKET_CAP = 50000
 MAX_MARKET_CAP = 750000
 MIN_VOLUME = 50000 
-MAX_AGE_MINUTES = 35 # تم الرفع إلى 35 دقيقة بناءً على طلبك
+MAX_AGE_MINUTES = 35 
 # ===============================================================
 
 app = Flask(__name__)
@@ -26,7 +26,7 @@ asyncio.set_event_loop(loop)
 
 async def send_startup_msg():
     try:
-        await bot.send_message(chat_id=CHAT_ID, text="⚡ *تم تحديث وضع القناص (V2)!*\n\n✅ شرط العمر الجديد: *35 دقيقة*.\n✅ جاري مراقبة العملات الجديدة... 🎯", parse_mode='Markdown')
+        await bot.send_message(chat_id=CHAT_ID, text="⚡ *تم تفعيل وضع القناص النهائي (V3)!*\n\n✅ تم إصلاح مشكلة البحث (صيد شامل لكل عملات سولانا).\n✅ شرط العمر: *35 دقيقة*.\n✅ دعم صور Pump.fun و IPFS.\n\nجاري المسح الشامل... 🎯", parse_mode='Markdown')
     except Exception as e: print(f"Startup error: {e}")
 
 async def send_alert(pair, image_url, age_mins):
@@ -38,7 +38,7 @@ async def send_alert(pair, image_url, age_mins):
         vol_h1 = pair.get("volume", {}).get("h1", 0)
         
         msg = (
-            f"🚀 *صيدة قناص سريعة (V2)* 🚀\n\n"
+            f"🚀 *صيدة قناص سريعة (V3)* 🚀\n\n"
             f"💎 *العملة:* ${symbol}\n"
             f"💰 *القيمة السوقية:* ${mcap:,.0f}\n"
             f"📊 *حجم التداول:* ${vol_h1:,.0f}\n"
@@ -55,19 +55,33 @@ async def send_alert(pair, image_url, age_mins):
 
 async def check_pairs_async():
     try:
-        url = "https://api.dexscreener.com/latest/dex/search?q=solana"
-        resp = requests.get(url, timeout=10)
+        # التعديل الجوهري V3: جلب أحدث البروفايلات أولاً لأنها تحتوي على الصور والبيانات الأحدث
+        url_profiles = "https://api.dexscreener.com/token-profiles/latest/v1"
+        resp = requests.get(url_profiles, timeout=10)
         if resp.status_code != 200: return
         
-        data = resp.json()
-        pairs = data.get("pairs", [])
-        pairs.sort(key=lambda x: x.get("pairCreatedAt", 0), reverse=True)
-
-        for pair in pairs[:30]:
-            token_address = pair.get("baseToken", {}).get("address")
-            if not token_address or token_address in processed_tokens: continue
-            if pair.get("chainId") != "solana": continue
-
+        profiles = resp.json()
+        
+        for profile in profiles:
+            token_address = profile.get("tokenAddress")
+            chain_id = profile.get("chainId")
+            
+            if not token_address or chain_id != "solana" or token_address in processed_tokens:
+                continue
+            
+            # جلب تفاصيل الزوج لهذا التوكن تحديداً لضمان الدقة
+            url_details = f"https://api.dexscreener.com/latest/dex/tokens/{token_address}"
+            res = requests.get(url_details, timeout=10)
+            if res.status_code != 200: continue
+            
+            data = res.json()
+            pairs = data.get("pairs", [])
+            if not pairs: continue
+            
+            # اختيار أفضل زوج على سولانا
+            pair = next((p for p in pairs if p.get("chainId") == "solana"), pairs[0])
+            
+            # فحص قفل السيولة
             is_locked = False
             pair_str = str(pair).lower()
             labels = [l.lower() for l in pair.get("labels", [])]
@@ -80,6 +94,7 @@ async def check_pairs_async():
             
             if not is_locked: continue
 
+            # الشروط المالية وعمر العملة
             mcap = pair.get("fdv", 0) or pair.get("marketCap", 0)
             vol_h1 = pair.get("volume", {}).get("h1", 0)
             created_at = pair.get("pairCreatedAt", 0)
@@ -89,12 +104,14 @@ async def check_pairs_async():
                 vol_h1 >= MIN_VOLUME and 
                 age_mins <= MAX_AGE_MINUTES):
                 
-                image_url = pair.get("info", {}).get("imageUrl")
+                # محاولة جلب الصورة من البروفايل أو الزوج
+                image_url = profile.get("icon") or pair.get("info", {}).get("imageUrl")
+                
                 if not image_url and pair.get("dexId") == "pump":
                     image_url = f"https://ipfs.io/ipfs/{token_address}"
                 
-                if not image_url:
-                    if not pair.get("info"): continue
+                # شرط الصورة الإلزامي
+                if not image_url: continue
 
                 await send_alert(pair, image_url, age_mins)
                 processed_tokens.add(token_address)
@@ -106,7 +123,7 @@ def check_pairs_sync():
 
 @app.route("/")
 def home():
-    return "Sniper Bot V2 is running with 35m age limit!"
+    return "Sniper Bot V3 is running!"
 
 if __name__ == "__main__":
     loop.run_until_complete(send_startup_msg())
