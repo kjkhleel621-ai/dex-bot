@@ -12,7 +12,7 @@ BOT_TOKEN = "8411603184:AAEurS9EZmL0k34lf1LKUVrZrGFug5UKNps"
 CHAT_ID = "5902278714"
 CHECK_INTERVAL = 30 
 
-# --- شروط الفلترة المتقدمة ---
+# --- شروط الفلترة (حسب طلبك الصريح) ---
 MIN_MARKET_CAP = 50000
 MAX_MARKET_CAP = 750000
 MIN_VOLUME_1H = 100000
@@ -28,7 +28,7 @@ asyncio.set_event_loop(loop)
 
 async def send_startup_msg():
     try:
-        await bot.send_message(chat_id=CHAT_ID, text="🚀 *تحديث ذكي للفلاتر!*\n\nتم تحسين اكتشاف القفل ليشمل عملات Pump.fun والسيولة المحروقة فوراً.\nجاري الصيد... 🎯", parse_mode='Markdown')
+        await bot.send_message(chat_id=CHAT_ID, text="🎯 *تم ضبط البوت حسب طلبك!*\n\n*الشرط الوحيد للأمان:* ظهور رمز القفل الرسمي على DexScreener.\nجاري الصيد... 🚀", parse_mode='Markdown')
     except Exception: pass
 
 async def get_pair_details(token_address):
@@ -43,7 +43,7 @@ async def get_pair_details(token_address):
     except Exception: pass
     return None
 
-async def send_alert(pair, image_url, lock_type):
+async def send_alert(pair, image_url):
     try:
         base_token = pair.get("baseToken", {})
         symbol = base_token.get("symbol", "Unknown")
@@ -55,60 +55,43 @@ async def send_alert(pair, image_url, lock_type):
         age_mins = (time.time() * 1000 - created_at) / (1000 * 60) if created_at else 0
         
         msg = (
-            f"🚨 *فرصة ذهبية مكتشفة* 🚨\n\n"
+            f"🚨 *فرصة جديدة (قفل DexScreener)* 🚨\n\n"
             f"💎 *العملة:* ${symbol}\n"
             f"💰 *القيمة السوقية:* ${mcap:,.0f}\n"
             f"📊 *حجم (1 ساعة):* ${vol_1h:,.0f}\n"
             f"🔄 *معاملات (1 ساعة):* {txns_1h}\n"
             f"⏱️ *العمر:* {age_mins:.1f} دقيقة\n"
-            f"🔒 *الأمان:* {lock_type} ✅\n\n"
+            f"🔒 *الأمان:* رمز القفل ظاهر ✅\n\n"
             f"📑 *العقد:* `{address}`\n"
             f"🔗 *الرابط:* [DexScreener]({pair.get('url')})\n\n"
-            f"✅ *التقييم:* مطابق لشروطك + Logo"
+            f"✅ *التقييم:* مطابق لشروطك تماماً"
         )
         await bot.send_photo(chat_id=CHAT_ID, photo=image_url, caption=msg, parse_mode='Markdown')
     except Exception: pass
 
 async def check_pairs_async():
     try:
-        # جلب أحدث البروفايلات لضمان الحصول على العملات ذات الصور
         resp = requests.get("https://api.dexscreener.com/token-profiles/latest/v1", timeout=15 )
         if resp.status_code != 200: return
         profiles = resp.json()
         
-        for profile in profiles[:30]: # فحص نطاق أوسع
+        for profile in profiles[:30]:
             token_address = profile.get("tokenAddress")
             if not token_address or token_address in processed_tokens: continue
             
             pair = await get_pair_details(token_address)
             if not pair: continue
             
+            # 1. شرط الصورة
             image_url = pair.get("info", {}).get("imageUrl")
             if not image_url: continue
             
-            # --- منطق اكتشاف القفل المطور ---
-            is_locked = False
-            lock_type = ""
-            
-            # 1. فحص عملات Pump.fun (تعتبر مقفلة/محروقة تلقائياً)
-            if pair.get("dexId") == "pump" or "pump" in pair.get("url", "").lower():
-                is_locked = True
-                lock_type = "Pump.fun (Auto-Burn)"
-            
-            # 2. فحص العلامات الرسمية في البيانات
+            # 2. شرط رمز القفل الرسمي (Strict DexScreener Label)
             labels = [l.lower() for l in pair.get("labels", [])]
-            if "liquidity-locked" in labels or "burned" in labels:
-                is_locked = True
-                lock_type = "DexScreener Verified"
-            
-            # 3. فحص نصي شامل للبيانات (لاكتشاف أي إشارة للقفل)
-            if not is_locked and "lock" in str(pair).lower():
-                is_locked = True
-                lock_type = "Contract Detected Lock"
+            if "liquidity-locked" not in labels:
+                continue # تخطي أي عملة ليس عليها رمز القفل الرسمي
 
-            if not is_locked: continue
-
-            # --- فحص باقي الشروط الممالية ---
+            # 3. الشروط المالية
             mcap = pair.get("fdv", 0) or pair.get("marketCap", 0)
             vol_1h = pair.get("volume", {}).get("h1", 0)
             txns_1h = pair.get("txns", {}).get("h1", {}).get("total", 0)
@@ -117,7 +100,7 @@ async def check_pairs_async():
 
             if (MIN_MARKET_CAP <= mcap <= MAX_MARKET_CAP and vol_1h >= MIN_VOLUME_1H and 
                 txns_1h >= MIN_TXNS_1H and age_mins <= MAX_AGE_MINUTES):
-                await send_alert(pair, image_url, lock_type)
+                await send_alert(pair, image_url)
                 processed_tokens.add(token_address)
     except Exception: pass
 
@@ -126,7 +109,7 @@ def check_pairs_sync():
 
 @app.route("/")
 def home():
-    return "Smart Bot is running!"
+    return "Official Lock Only Bot is running!"
 
 if __name__ == "__main__":
     loop.run_until_complete(send_startup_msg())
